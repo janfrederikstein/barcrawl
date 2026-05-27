@@ -67,7 +67,7 @@ cp .env.example .env
 ```
 
 #### LiteLLM (Solitaire API key)
-add here
+https://insider.solita.fi/sites/generative-ai/news/28723/launching-litellm-api-keys-for-competence-development-and-access-to-mcp-servers-in-github-copilot
 
 #### Google Places API key
 

@@ -53,9 +53,6 @@ def search_bars_nearby_by_coords(
             }
         },
     }
-    if keyword:
-        body["textQuery"] = keyword
-
     field_mask = ",".join([
         "places.id",
         "places.displayName",

@@ -1,13 +1,29 @@
 import operator
+import os
 from typing import Annotated, TypedDict
 
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage
 from langchain_core.tools import tool
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 
 from tools.places import get_bar_details, search_bars_nearby
+
+_PRICE_LEVEL = {
+    "PRICE_LEVEL_FREE": "Free",
+    "PRICE_LEVEL_INEXPENSIVE": "$",
+    "PRICE_LEVEL_MODERATE": "$$",
+    "PRICE_LEVEL_EXPENSIVE": "$$$",
+    "PRICE_LEVEL_VERY_EXPENSIVE": "$$$$",
+}
+
+def _fmt_price(level) -> str:
+    if level is None:
+        return ""
+    if isinstance(level, str):
+        return _PRICE_LEVEL.get(level, level)
+    return "$" * (level + 1)
 
 
 # ---------------------------------------------------------------------------
@@ -36,7 +52,7 @@ def find_bars(location: str, radius_meters: int = 1000, preferences: str = "") -
         if bar["rating"]:
             lines.append(f"   Rating: {bar['rating']} ({bar['user_ratings_total']} reviews)")
         if bar["price_level"] is not None:
-            lines.append(f"   Price level: {'$' * (bar['price_level'] + 1)}")
+            lines.append(f"   Price level: {_fmt_price(bar['price_level'])}")
         if bar["open_now"] is not None:
             lines.append(f"   Open now: {'Yes' if bar['open_now'] else 'No'}")
         lines.append(f"   Place ID: {bar['place_id']}")
@@ -64,7 +80,7 @@ def get_bar_info(place_id: str) -> str:
     if details["rating"]:
         lines.append(f"Rating: {details['rating']} ({details.get('user_ratings_total', '?')} reviews)")
     if details["price_level"] is not None:
-        lines.append(f"Price level: {'$' * (details['price_level'] + 1)}")
+        lines.append(f"Price level: {_fmt_price(details['price_level'])}")
     if details["opening_hours"]:
         lines.append("Hours:\n" + "\n".join(f"  {h}" for h in details["opening_hours"]))
     if details["website"]:
@@ -92,7 +108,11 @@ class AgentState(TypedDict):
 tools = [find_bars, get_bar_info]
 tool_node = ToolNode(tools)
 
-model = ChatAnthropic(model="claude-sonnet-4-6").bind_tools(tools)
+model = ChatOpenAI(
+    model=os.environ.get("LITELLM_MODEL", "azure/gpt-4o-mini"),
+    api_key=os.environ.get("LITELLM_API_KEY"),
+    base_url=os.environ.get("LITELLM_BASE_URL", "https://app-litellmsn66ka.azurewebsites.net/v1"),
+).bind_tools(tools)
 
 
 def should_continue(state: AgentState) -> str:
