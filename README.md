@@ -39,15 +39,6 @@ A bar crawl plan with:
 - [ ] Conversational refinement — the user can say "swap bar 3 for something quieter"
 - [ ] Explanation of *why* each bar was chosen
 
-### Evaluation Criteria
-
-| Criterion | Weight |
-|-----------|--------|
-| Does it work end-to-end? | 40% |
-| Quality of the agentic flow design | 30% |
-| Quality and usefulness of the output | 20% |
-| Code quality and creativity | 10% |
-
 ---
 
 ## Getting Started
