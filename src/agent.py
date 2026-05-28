@@ -27,6 +27,8 @@ from langchain_core.tools import tool
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 
+from tools.places import get_bar_details, search_bars_nearby
+
 
 # ---------------------------------------------------------------------------
 # 1. TOOLS
@@ -34,22 +36,96 @@ from langgraph.prebuilt import ToolNode
 #    Decorate them with @tool and write a clear docstring — the model reads
 #    the docstring to understand when and how to use the tool.
 #
-#    For this project you'll want tools that:
-#      - Search for bars near a location
-#      - Look up details (hours, vibe, reviews) for a specific bar
-#    The building blocks for both are already in src/tools/places.py.
+#    Two tools are provided here, both backed by the Google Places API
+#    (see src/tools/places.py — you don't need to touch that file):
+#      - find_bars   : search for bars near a location string
+#      - get_bar_info: fetch details for a specific bar by its Place ID
+#
+#    Notice the pattern:
+#      1. Call the Places API helper to get raw data
+#      2. Format the result as a readable string
+#      3. Return that string — the LLM reads it like text in the conversation
 # ---------------------------------------------------------------------------
 
+# Price levels come back from the Places API as string enums, not integers.
+# This helper converts them to the familiar $ / $$ / $$$ notation.
+_PRICE_LEVEL = {
+    "PRICE_LEVEL_FREE": "Free",
+    "PRICE_LEVEL_INEXPENSIVE": "$",
+    "PRICE_LEVEL_MODERATE": "$$",
+    "PRICE_LEVEL_EXPENSIVE": "$$$",
+    "PRICE_LEVEL_VERY_EXPENSIVE": "$$$$",
+}
+
+def _fmt_price(level) -> str:
+    if level is None:
+        return ""
+    if isinstance(level, str):
+        return _PRICE_LEVEL.get(level, level)
+    return "$" * (level + 1)  # fallback for legacy integer values
+
+
 @tool
-def example_tool(query: str) -> str:
+def find_bars(location: str, radius_meters: int = 1000, preferences: str = "") -> str:
     """
-    A placeholder tool. Replace this with something useful.
+    Find bars near a location. Returns a numbered list of nearby bars with
+    name, address, rating, and place_id.
 
     Args:
-        query: Whatever the model wants to pass in.
+        location: Address, neighbourhood, or city to search near.
+        radius_meters: Search radius in metres (default 1000).
+        preferences: Optional keyword to filter bars (e.g. "craft beer", "cocktail").
     """
-    # TODO: replace with real logic, e.g. call search_bars_nearby()
-    return f"[example_tool] received: {query}"
+    bars = search_bars_nearby(location, radius_meters, keyword=preferences or None)
+    if not bars:
+        return f"No bars found near '{location}'. Try a broader search or larger radius."
+
+    lines = [f"Found {len(bars)} bars near {location}:\n"]
+    for i, bar in enumerate(bars, 1):
+        lines.append(f"{i}. {bar['name']}")
+        lines.append(f"   Address: {bar['address']}")
+        if bar["rating"]:
+            lines.append(f"   Rating: {bar['rating']} ({bar['user_ratings_total']} reviews)")
+        if bar["price_level"] is not None:
+            lines.append(f"   Price level: {_fmt_price(bar['price_level'])}")
+        if bar["open_now"] is not None:
+            lines.append(f"   Open now: {'Yes' if bar['open_now'] else 'No'}")
+        lines.append(f"   Place ID: {bar['place_id']}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+@tool
+def get_bar_info(place_id: str) -> str:
+    """
+    Get detailed information about a specific bar using its Google Place ID.
+    Returns address, opening hours, rating, website, and a short description.
+
+    Args:
+        place_id: The Google Place ID of the bar (from find_bars results).
+    """
+    details = get_bar_details(place_id)
+
+    lines = [f"**{details['name']}**"]
+    if details["address"]:
+        lines.append(f"Address: {details['address']}")
+    if details["summary"]:
+        lines.append(f"About: {details['summary']}")
+    if details["rating"]:
+        lines.append(f"Rating: {details['rating']} ({details.get('user_ratings_total', '?')} reviews)")
+    if details["price_level"] is not None:
+        lines.append(f"Price level: {_fmt_price(details['price_level'])}")
+    if details["opening_hours"]:
+        lines.append("Hours:\n" + "\n".join(f"  {h}" for h in details["opening_hours"]))
+    if details["website"]:
+        lines.append(f"Website: {details['website']}")
+    if details["reviews"]:
+        lines.append("Recent reviews:")
+        for r in details["reviews"]:
+            lines.append(f"  [{r['rating']}★] {r['text'][:120]}...")
+
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +146,7 @@ class AgentState(TypedDict):
 #    it will include their schemas in every request automatically.
 # ---------------------------------------------------------------------------
 
-tools = [example_tool]
+tools = [find_bars, get_bar_info]
 tool_node = ToolNode(tools)  # LangGraph helper: runs whichever tool the model picked
 
 model = ChatOpenAI(
