@@ -46,7 +46,7 @@ A bar crawl plan with:
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/janfstein93/barcrawl.git
+git clone https://github.com/janfrederikstein/barcrawl.git
 cd barcrawl
 ```
 
